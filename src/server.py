@@ -9,7 +9,7 @@ import asyncio
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Union, Literal
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
 
 # Load environment variables from .env file
 load_dotenv()
@@ -358,7 +358,7 @@ async def list_text_to_texture_tasks(params: Optional[ListTasksParams] = None) -
         return response.json()
 
 @mcp.tool()
-async def stream_text_to_3d_task(task_id: str, timeout: int = 300) -> Dict[str, Any]:
+async def stream_text_to_3d_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
     """
     Stream a Text to 3D task by its ID.
     
@@ -386,11 +386,14 @@ async def stream_text_to_3d_task(task_id: str, timeout: int = 300) -> Dict[str, 
                     
                     if data.get("status") in ["SUCCEEDED", "FAILED", "CANCELED"]:
                         break
+                    else:
+                        if ctx is not None:
+                            await ctx.report_progress(data.get("progress"), 100)
             
             return final_data or {"error": "No data received from stream"}
 
 @mcp.tool()
-async def stream_image_to_3d_task(task_id: str, timeout: int = 300) -> Dict[str, Any]:
+async def stream_image_to_3d_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
     """
     Stream an Image to 3D task by its ID.
     
@@ -418,11 +421,14 @@ async def stream_image_to_3d_task(task_id: str, timeout: int = 300) -> Dict[str,
                     
                     if data.get("status") in ["SUCCEEDED", "FAILED", "CANCELED"]:
                         break
+                    else:
+                        if ctx is not None:
+                            await ctx.report_progress(data.get("progress"), 100)
             
             return final_data or {"error": "No data received from stream"}
 
 @mcp.tool()
-async def stream_remesh_task(task_id: str, timeout: int = 300) -> Dict[str, Any]:
+async def stream_remesh_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
     """
     Stream a Remesh task by its ID.
     
@@ -450,11 +456,14 @@ async def stream_remesh_task(task_id: str, timeout: int = 300) -> Dict[str, Any]
                     
                     if data.get("status") in ["SUCCEEDED", "FAILED", "CANCELED"]:
                         break
+                    else:
+                        if ctx is not None:
+                            await ctx.report_progress(data.get("progress"), 100)
             
             return final_data or {"error": "No data received from stream"}
 
 @mcp.tool()
-async def stream_text_to_texture_task(task_id: str, timeout: int = 300) -> Dict[str, Any]:
+async def stream_text_to_texture_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
     """
     Stream a Text to Texture task by its ID.
     
@@ -482,6 +491,9 @@ async def stream_text_to_texture_task(task_id: str, timeout: int = 300) -> Dict[
                     
                     if data.get("status") in ["SUCCEEDED", "FAILED", "CANCELED"]:
                         break
+                    else:
+                        if ctx is not None:
+                            await ctx.report_progress(data.get("progress"), 100)
             
             return final_data or {"error": "No data received from stream"}
 
