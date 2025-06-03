@@ -94,7 +94,7 @@ async def create_text_to_3d_task(request: AnyTextTo3DTaskRequest) -> TaskRespons
         "Authorization": f"Bearer {MESHY_API_KEY}"
     }
 
-    if request.texture_image_url and request.texture_image_url.startswith("file://"):
+    if 'texture_image_url' in request and request.texture_image_url.startswith("file://"):
         # Convert file:// url to base64 encoded image string
         with open(request.texture_image_url[7:], "rb") as image_file:
             image_data = image_file.read()
@@ -192,7 +192,7 @@ async def create_image_to_3d_task(request: ImageTo3DTaskRequest) -> TaskResponse
             request.image_url = base64.b64encode(image_data).decode("utf-8")
             request.image_url = f"data:image/{request.image_url.split('.')[-1]};base64,{request.image_url}"
 
-    if request.texture_image_url and request.texture_image_url.startswith("file://"):
+    if 'texture_image_url' in request and request.texture_image_url.startswith("file://"):
         # Convert file:// url to base64 encoded image string depending on the image file extension
         with open(request.texture_image_url[7:], "rb") as image_file:
             image_data = image_file.read()
