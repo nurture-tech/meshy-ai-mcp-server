@@ -40,4 +40,4 @@ profile = "black"
 line_length = 88
 
 [project.scripts]
-blender-mcp = "src.server:main"
+meshy-ai-mcp-server = "src.server:main"
