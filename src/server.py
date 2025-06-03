@@ -370,7 +370,7 @@ async def stream_text_to_3d_task(task_id: str, timeout: int = 300) -> Dict[str, 
     }
     
     async with httpx.AsyncClient() as client:
-        with client.stream(
+        async with client.stream(
             "GET",
             f"https://api.meshy.ai/openapi/v2/text-to-3d/{task_id}/stream",
             headers=headers,
@@ -402,7 +402,7 @@ async def stream_image_to_3d_task(task_id: str, timeout: int = 300) -> Dict[str,
     }
     
     async with httpx.AsyncClient() as client:
-        with client.stream(
+        async with client.stream(
             "GET",
             f"https://api.meshy.ai/openapi/v1/image-to-3d/{task_id}/stream",
             headers=headers,
@@ -434,7 +434,7 @@ async def stream_remesh_task(task_id: str, timeout: int = 300) -> Dict[str, Any]
     }
     
     async with httpx.AsyncClient() as client:
-        with client.stream(
+        async with client.stream(
             "GET",
             f"https://api.meshy.ai/openapi/v1/remesh/{task_id}/stream",
             headers=headers,
@@ -466,7 +466,7 @@ async def stream_text_to_texture_task(task_id: str, timeout: int = 300) -> Dict[
     }
     
     async with httpx.AsyncClient() as client:
-        with client.stream(
+        async with client.stream(
             "GET",
             f"https://api.meshy.ai/openapi/v1/text-to-texture/{task_id}/stream",
             headers=headers,
