@@ -91,7 +91,7 @@ async def create_text_to_3d_task(request: TextTo3DTaskRequest) -> TaskResponse:
         with open(request.texture_image_url[7:], "rb") as image_file:
             image_data = image_file.read()
             request.texture_image_url = base64.b64encode(image_data).decode("utf-8")
-            request.texture_image_url = f"data:image/png;base64,{request.texture_image_url}"
+            request.texture_image_url = f"data:image/{request.texture_image_url.split('.')[-1]};base64,{request.texture_image_url}"
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -162,14 +162,14 @@ async def create_image_to_3d_task(request: ImageTo3DTaskRequest) -> TaskResponse
         with open(request.image_url[7:], "rb") as image_file:
             image_data = image_file.read()
             request.image_url = base64.b64encode(image_data).decode("utf-8")
-            request.image_url = f"data:image/png;base64,{request.image_url}"
+            request.image_url = f"data:image/{request.image_url.split('.')[-1]};base64,{request.image_url}"
 
     if request.texture_image_url and request.texture_image_url.startswith("file://"):
-        # Convert file:// url to base64 encoded image string
+        # Convert file:// url to base64 encoded image string depending on the image file extension
         with open(request.texture_image_url[7:], "rb") as image_file:
             image_data = image_file.read()
             request.texture_image_url = base64.b64encode(image_data).decode("utf-8")
-            request.texture_image_url = f"data:image/png;base64,{request.texture_image_url}"
+            request.texture_image_url = f"data:image/{request.texture_image_url.split('.')[-1]};base64,{request.texture_image_url}"
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
