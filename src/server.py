@@ -89,6 +89,8 @@ async def create_text_to_3d_task(request: AnyTextTo3DTaskRequest) -> TaskRespons
     Create a new Text to 3D task with Meshy AI.
     
     This tool allows you to generate a 3D model from a text prompt.
+
+    Start with preview mode to get a quick untextured mesh. Then use the refine mode to get the final textured result.
     """
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}"
