@@ -1,6 +1,7 @@
 """
 Meshy AI MCP Server - Provides tools for interacting with Meshy AI's 3D generation API
 """
+import base64
 import os
 import json
 import httpx
@@ -23,33 +24,48 @@ if not MESHY_API_KEY:
 
 # Define Pydantic models for request/response validation
 class TextTo3DTaskRequest(BaseModel):
-    mode: str = Field(..., description="Task mode: 'preview' or 'refine'")
-    prompt: str = Field(..., description="Text prompt describing the 3D model to generate")
-    art_style: str = Field("realistic", description="Art style for the 3D model")
-    should_remesh: bool = Field(True, description="Whether to remesh the model after generation")
+    ai_model: Literal["meshy-4", "meshy-5"] = Field(default="meshy-4", description="The AI model to use for the task. At this time, meshy-4 is the only model that supports PBR textures.")
+    mode: Literal["preview", "refine"] = Field(description="This field should be set to 'preview' when creating a preview task.")
+    prompt: str = Field(description="Text prompt describing the 3D model to generate")
+    preview_task_id: Optional[str] = Field(description="The ID of the preview task to use for the generation.")
+    art_style: Literal["realistic", "sculpture"] = Field(default="realistic", description="Art style for the 3D model")
+    texture_prompt: Optional[str] = Field( description="Provide an additional text prompt to guide the texturing process. Maximum 600 characters.")
+    topology: Literal["quad", "triangle"] = Field(default="triangle", description="Topology type: 'quad' or 'triangle'")
+    target_polycount: int = Field(default=30000, description="Target polygon count for the remeshed model")
+    should_remesh: bool = Field(default=True, description="Whether to remesh the model after generation")
+    symmetry_mode: Literal["off", "auto", "on"] = Field(default="auto", description="The symmetry_mode field controls symmetry behavior during the model generation process.")
+    texture_image_url: Optional[str] = Field(description="The URL of the image to use for the texture. This can be a file://, http://, https://, or data: URL.")
+    seed: Optional[int] = Field(description="Seed of the task. When you use the same prompt and seed, you will generate the same result in most cases.")
 
 class RemeshTaskRequest(BaseModel):
-    input_task_id: str = Field(..., description="ID of the input task to remesh")
-    target_formats: List[str] = Field(["glb", "fbx"], description="Target formats for the remeshed model")
-    topology: str = Field("quad", description="Topology type: 'quad' or 'triangle'")
-    target_polycount: int = Field(50000, description="Target polygon count for the remeshed model")
-    resize_height: float = Field(1.0, description="Resize height for the remeshed model")
-    origin_at: str = Field("bottom", description="Origin position: 'bottom', 'center', etc.")
+    input_task_id: str = Field(description="ID of the input task to remesh")
+    target_formats: List[Literal["glb", "fbx"]] = Field(default=["glb"], description="Target formats for the remeshed model")
+    topology: Literal["quad", "triangle"] = Field(default="triangle", description="Topology type: 'quad' or 'triangle'")
+    target_polycount: int = Field(default=30000, description="Target polygon count for the remeshed model")
+    resize_height: float = Field(default=0, description="Resize height for the remeshed model")
+    origin_at: Literal["bottom", "center"] = Field(default="", description="Origin position: 'bottom', 'center', etc.")
 
 class ImageTo3DTaskRequest(BaseModel):
-    image_url: str = Field(..., description="URL of the image to convert to 3D")
-    prompt: Optional[str] = Field(None, description="Optional text prompt to guide the 3D generation")
-    art_style: str = Field("realistic", description="Art style for the 3D model")
+    ai_model: Literal["meshy-4", "meshy-5"] = Field(default="meshy-4", description="The AI model to use for the task. At this time, meshy-4 is the only model that supports PBR textures.")
+    image_url: str = Field(description="URL of the image to convert to 3D. This can be a file://, http://, https://, or data: URL.")
+    topology: Literal["quad", "triangle"] = Field(default="triangle", description="Topology type: 'quad' or 'triangle'")
+    target_polycount: int = Field(default=30000, description="Target polygon count for the remeshed model")
+    should_remesh: bool = Field(default=True, description="Whether to remesh the model after generation")
+    symmetry_mode: Literal["off", "auto", "on"] = Field(default="auto", description="The symmetry_mode field controls symmetry behavior during the model generation process.")
+    should_texture: bool = Field(default=True, description="Whether to texture the model after generation")
+    enable_pbr: bool = Field(default=False, description="Whether to enable PBR textures. At this time, enable_pbr=true requires ai_model to be meshy-4.")
+    texture_prompt: Optional[str] = Field(description="Provide an additional text prompt to guide the texturing process. Maximum 600 characters.")
+    texture_image_url: Optional[str] = Field(description="The URL of the image to use for the texture. This can be a file://, http://, https://, or data: URL.")
 
 class TextToTextureTaskRequest(BaseModel):
-    model_url: str = Field(..., description="URL of the 3D model to texture")
-    object_prompt: str = Field(..., description="Text prompt describing the object")
-    style_prompt: Optional[str] = Field(None, description="Text prompt describing the style")
-    enable_original_uv: bool = Field(True, description="Whether to use original UV mapping")
-    enable_pbr: bool = Field(True, description="Whether to enable PBR textures")
-    resolution: str = Field("1024", description="Texture resolution")
-    negative_prompt: Optional[str] = Field(None, description="Negative prompt to guide generation")
-    art_style: str = Field("realistic", description="Art style for the texture")
+    model_url: str = Field(description="URL of the 3D model to texture")
+    object_prompt: str = Field(description="Text prompt describing the object")
+    style_prompt: str = Field(description="Text prompt describing the style")
+    enable_original_uv: bool = Field(default=True, description="Whether to use original UV mapping")
+    enable_pbr: bool = Field(default=True, description="Whether to enable PBR textures")
+    resolution: Optional[Literal["1024", "2048", "4096"]] = Field(description="Texture resolution")
+    negative_prompt: Optional[str] = Field(description="Negative prompt to guide generation")
+    art_style: Literal["realistic", "fake-3d-cartoon", "japanese-anime", "cartoon-line-art", "realistic-hand-drawn", "fake-3d-hand-drawn", "oriental-comic-ink"] = Field(default="realistic", description="Art style for the texture")
 
 class ListTasksParams(BaseModel):
     page_size: int = Field(10, description="Number of tasks to return per page")
@@ -69,6 +85,13 @@ async def create_text_to_3d_task(request: TextTo3DTaskRequest) -> TaskResponse:
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}"
     }
+
+    if request.texture_image_url and request.texture_image_url.startswith("file://"):
+        # Convert file:// url to base64 encoded image string
+        with open(request.texture_image_url[7:], "rb") as image_file:
+            image_data = image_file.read()
+            request.texture_image_url = base64.b64encode(image_data).decode("utf-8")
+            request.texture_image_url = f"data:image/png;base64,{request.texture_image_url}"
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -133,6 +156,20 @@ async def create_image_to_3d_task(request: ImageTo3DTaskRequest) -> TaskResponse
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}"
     }
+
+    if request.image_url.startswith("file://"):
+        # Convert file:// url to base64 encoded image string
+        with open(request.image_url[7:], "rb") as image_file:
+            image_data = image_file.read()
+            request.image_url = base64.b64encode(image_data).decode("utf-8")
+            request.image_url = f"data:image/png;base64,{request.image_url}"
+
+    if request.texture_image_url and request.texture_image_url.startswith("file://"):
+        # Convert file:// url to base64 encoded image string
+        with open(request.texture_image_url[7:], "rb") as image_file:
+            image_data = image_file.read()
+            request.texture_image_url = base64.b64encode(image_data).decode("utf-8")
+            request.texture_image_url = f"data:image/png;base64,{request.texture_image_url}"
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
