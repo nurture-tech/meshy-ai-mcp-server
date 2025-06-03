@@ -8,8 +8,9 @@ import httpx
 import asyncio
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Union, Literal
+from typing import Annotated, List, Optional, Dict, Any, Union, Literal
 from mcp.server.fastmcp import FastMCP, Context
+from mcp.types import TextContent, ImageContent
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,20 +23,27 @@ MESHY_API_KEY = os.getenv("MESHY_API_KEY")
 if not MESHY_API_KEY:
     raise ValueError("MESHY_API_KEY environment variable is not set")
 
+
 # Define Pydantic models for request/response validation
-class TextTo3DTaskRequest(BaseModel):
+class TextTo3DPreviewTaskRequest(BaseModel):
     ai_model: Literal["meshy-4", "meshy-5"] = Field(default="meshy-4", description="The AI model to use for the task. At this time, meshy-4 is the only model that supports PBR textures.")
-    mode: Literal["preview", "refine"] = Field(description="This field should be set to 'preview' when creating a preview task.")
+    mode: Literal["preview"] = Field(default="preview")
     prompt: str = Field(description="Text prompt describing the 3D model to generate")
-    preview_task_id: Optional[str] = Field(default=None, description="The ID of the preview task to use for the generation.")
     art_style: Literal["realistic", "sculpture"] = Field(default="realistic", description="Art style for the 3D model")
-    texture_prompt: Optional[str] = Field(default=None, description="Provide an additional text prompt to guide the texturing process. Maximum 600 characters.")
     topology: Literal["quad", "triangle"] = Field(default="triangle", description="Topology type: 'quad' or 'triangle'")
     target_polycount: int = Field(default=30000, description="Target polygon count for the remeshed model")
     should_remesh: bool = Field(default=True, description="Whether to remesh the model after generation")
     symmetry_mode: Literal["off", "auto", "on"] = Field(default="auto", description="The symmetry_mode field controls symmetry behavior during the model generation process.")
-    texture_image_url: Optional[str] = Field(default=None, description="The URL of the image to use for the texture. This can be a file://, http://, https://, or data: URL.")
     seed: Optional[int] = Field(default=None, description="Seed of the task. When you use the same prompt and seed, you will generate the same result in most cases.")
+
+class TextTo3DRefineTaskRequest(BaseModel):
+    mode: Literal["refine"] = Field(default="refine")
+    preview_task_id: str = Field(description="The ID of the preview task to use for the generation.")
+    texture_prompt: Optional[str] = Field(default=None, description="Provide an additional text prompt to guide the texturing process in. Maximum 600 characters.")
+    texture_image_url: Optional[str] = Field(default=None, description="The URL of the image to use as a reference for the texture. This can be a file://, http://, https://, or data: URL.")
+
+
+AnyTextTo3DTaskRequest = Annotated[Union[TextTo3DPreviewTaskRequest, TextTo3DRefineTaskRequest], Field(discriminator="mode")]
 
 class RemeshTaskRequest(BaseModel):
     input_task_id: str = Field(description="ID of the input task to remesh")
@@ -55,7 +63,7 @@ class ImageTo3DTaskRequest(BaseModel):
     should_texture: bool = Field(default=True, description="Whether to texture the model after generation")
     enable_pbr: bool = Field(default=False, description="Whether to enable PBR textures. At this time, enable_pbr=true requires ai_model to be meshy-4.")
     texture_prompt: Optional[str] = Field(default=None, description="Provide an additional text prompt to guide the texturing process. Maximum 600 characters.")
-    texture_image_url: Optional[str] = Field(default=None, description="The URL of the image to use for the texture. This can be a file://, http://, https://, or data: URL.")
+    texture_image_url: Optional[str] = Field(default=None, description="The URL of the image to use as a reference for the texture. This can be a file://, http://, https://, or data: URL.")
 
 class TextToTextureTaskRequest(BaseModel):
     model_url: str = Field(description="URL of the 3D model to texture")
@@ -76,7 +84,7 @@ class TaskResponse(BaseModel):
     result: Optional[str] = Field(default=None, description="Task result (if available)")
 
 @mcp.tool()
-async def create_text_to_3d_task(request: TextTo3DTaskRequest) -> TaskResponse:
+async def create_text_to_3d_task(request: AnyTextTo3DTaskRequest) -> TaskResponse:
     """
     Create a new Text to 3D task with Meshy AI.
     
@@ -122,7 +130,27 @@ async def retrieve_text_to_3d_task(task_id: str) -> Dict[str, Any]:
             headers=headers
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+
+        if data.get("status") == "SUCCEEDED":
+            thumbnail_response = await client.get(data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
+            
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
+        else:
+            return data
 
 @mcp.tool()
 async def create_remesh_task(request: RemeshTaskRequest) -> TaskResponse:
@@ -221,7 +249,27 @@ async def retrieve_image_to_3d_task(task_id: str) -> Dict[str, Any]:
             headers=headers
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+
+        if data.get("status") == "SUCCEEDED":
+            thumbnail_response = await client.get(data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
+            
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
+        else:
+            return data
 
 @mcp.tool()
 async def retrieve_remesh_task(task_id: str) -> Dict[str, Any]:
@@ -240,7 +288,27 @@ async def retrieve_remesh_task(task_id: str) -> Dict[str, Any]:
             headers=headers
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+
+        if data.get("status") == "SUCCEEDED":
+            thumbnail_response = await client.get(data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
+            
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
+        else:
+            return data
 
 @mcp.tool()
 async def retrieve_text_to_texture_task(task_id: str) -> Dict[str, Any]:
@@ -259,7 +327,27 @@ async def retrieve_text_to_texture_task(task_id: str) -> Dict[str, Any]:
             headers=headers
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+
+        if data.get("status") == "SUCCEEDED":
+            thumbnail_response = await client.get(data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
+            
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
+        else:
+            return data
 
 @mcp.tool()
 async def list_text_to_3d_tasks(params: Optional[ListTasksParams] = None) -> List[Dict[str, Any]]:
@@ -358,7 +446,7 @@ async def list_text_to_texture_tasks(params: Optional[ListTasksParams] = None) -
         return response.json()
 
 @mcp.tool()
-async def stream_text_to_3d_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
+async def stream_text_to_3d_task(task_id: str, timeout: int = 300, ctx: Context = None) -> List[TextContent | ImageContent]:
     """
     Stream a Text to 3D task by its ID.
     
@@ -389,8 +477,27 @@ async def stream_text_to_3d_task(task_id: str, timeout: int = 300, ctx: Context 
                     else:
                         if ctx is not None:
                             await ctx.report_progress(data.get("progress"), 100)
+
+
+            if final_data is None:
+                raise Exception("No data received from stream")
+
+            thumbnail_response = await client.get(final_data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
             
-            return final_data or {"error": "No data received from stream"}
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(final_data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
 
 @mcp.tool()
 async def stream_image_to_3d_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
@@ -425,7 +532,26 @@ async def stream_image_to_3d_task(task_id: str, timeout: int = 300, ctx: Context
                         if ctx is not None:
                             await ctx.report_progress(data.get("progress"), 100)
             
-            return final_data or {"error": "No data received from stream"}
+
+            if final_data is None:
+                raise Exception("No data received from stream")
+
+            thumbnail_response = await client.get(final_data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
+            
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(final_data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
 
 @mcp.tool()
 async def stream_remesh_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
@@ -460,7 +586,26 @@ async def stream_remesh_task(task_id: str, timeout: int = 300, ctx: Context = No
                         if ctx is not None:
                             await ctx.report_progress(data.get("progress"), 100)
             
-            return final_data or {"error": "No data received from stream"}
+
+            if final_data is None:
+                raise Exception("No data received from stream")
+
+            thumbnail_response = await client.get(final_data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
+            
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(final_data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
 
 @mcp.tool()
 async def stream_text_to_texture_task(task_id: str, timeout: int = 300, ctx: Context = None) -> Dict[str, Any]:
@@ -495,7 +640,26 @@ async def stream_text_to_texture_task(task_id: str, timeout: int = 300, ctx: Con
                         if ctx is not None:
                             await ctx.report_progress(data.get("progress"), 100)
             
-            return final_data or {"error": "No data received from stream"}
+
+            if final_data is None:
+                raise Exception("No data received from stream")
+
+            thumbnail_response = await client.get(final_data.get("thumbnail_url"))
+            thumbnail_response.raise_for_status()
+            thumbnail_data_base64 = base64.b64encode(thumbnail_response.content).decode("utf-8")
+            
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(final_data),
+                    mimeType="application/json"
+                ),
+                ImageContent(
+                    type="image",
+                    data=thumbnail_data_base64,
+                    mimeType="image/png"
+                )
+            ]
 
 @mcp.tool()
 async def get_balance() -> Dict[str, Any]:
